@@ -61,17 +61,21 @@ def ast_normalize(filename):
     return ast.unparse(LevensteinLower().visit(parsed))
 
 
+def files_comparator(first_filename, second_filename):
+    return round(1 - damerau_levenshtein_distance(
+                 x := ast_normalize(first_filename),
+                 y := ast_normalize(second_filename)) / max(len(x),
+                                                            len(y)),
+                 2)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Compares 2 python files and produces % of similarity")
-    parser.add_argument("filename1")
-    parser.add_argument("filename2")
+        description="Compares python files and produces similarity")
+    parser.add_argument("input")
+    parser.add_argument("scores")
     args = parser.parse_args()
-    first_filename = args.filename1
-    second_filename = args.filename2
-    similarity = round(100 * (1 - damerau_levenshtein_distance(
-                       x := ast_normalize(first_filename),
-                       y := ast_normalize(second_filename)) / max(len(x),
-                                                                  len(y))),
-                       2)
-    print("Percent of similarity: {}".format(similarity))
+    with open(args.input, "r") as r, open(args.scores, "w") as w:
+        for line in r.readlines():
+            w.write(str(files_comparator(*line.split())))
+            w.write("\n")
