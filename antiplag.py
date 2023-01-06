@@ -4,14 +4,6 @@ import ast
 import numpy as np
 
 
-class LevensteinLower(ast.NodeTransformer):
-    def visit_arg(self, node):
-        return ast.arg(**{**node.__dict__, 'arg': 'a'})
-
-    def visit_Name(self, node):
-        return ast.Name(**{**node.__dict__, 'id': 'N'})
-
-
 def damerau_levenshtein_distance(s1, s2):
     lenstr1 = len(s1)
     lenstr2 = len(s2)
@@ -36,40 +28,61 @@ def damerau_levenshtein_distance(s1, s2):
             else:
                 d[i][j] = 0
 
-    return d[lenstr1][lenstr2]
+    return d[lenstr1][lenstr2] / max(lenstr1, lenstr2)
 
 
-def ast_normalize(filename):
-    with open(filename) as f:
-        code = f.read()
-    parsed = ast.parse(code)  # Getting rid of comments
+class AntiPlagiarism:
+    class LevensteinLower(ast.NodeTransformer):
+        def visit_arg(self, node):
+            return ast.arg(**{**node.__dict__, 'arg': 'a'})
 
-    # Getting rid of docstrings
-    for node in ast.walk(parsed):
-        if not isinstance(node, (ast.FunctionDef,
-                                 ast.ClassDef,
-                                 ast.AsyncFunctionDef)):
-            continue
-        if not len(node.body):
-            continue
-        if not isinstance(node.body[0], ast.Expr):
-            continue
-        if not hasattr(node.body[0], 'value') or\
-           not isinstance(node.body[0].value, ast.Str):
-            continue
-        node.body = node.body[1:]
-    return ast.unparse(LevensteinLower().visit(parsed))
+        def visit_Name(self, node):
+            return ast.Name(**{**node.__dict__, 'id': 'N'})
 
+    def __init__(self, metrics):
+        self.__metrics = metrics
+        self.metric_results = {}
 
-def files_comparator(first_filename, second_filename):
-    return round(1 - damerau_levenshtein_distance(
-                 x := ast_normalize(first_filename),
-                 y := ast_normalize(second_filename)) / max(len(x),
-                                                            len(y)),
-                 2)
+    def __load_files(self, first_filename, second_filename):
+        """Load files from filenames and parse them"""
+        with open(first_filename, "r") as first_file,\
+                open(second_filename, "r") as second_file:
+            self.first_code = ast.parse(first_file.read())
+            self.second_code = ast.parse(second_file.read())
+
+    def __normalize(self, root_node):
+        """Getting rid of comments and docstrings"""
+
+        for node in ast.walk(root_node):
+            if not isinstance(node, (ast.FunctionDef,
+                                     ast.ClassDef,
+                                     ast.AsyncFunctionDef)):
+                continue
+            if not len(node.body):
+                continue
+            if not isinstance(node.body[0], ast.Expr):
+                continue
+            if not hasattr(node.body[0], 'value') or\
+                    not isinstance(node.body[0].value, ast.Str):
+                continue
+            node.body = node.body[1:]
+        return ast.unparse(self.LevensteinLower().visit(root_node))
+
+    def __get_normalized_code(self):
+        return self.__normalize(self.first_code),\
+            self.__normalize(self.second_code)
+
+    def Compare(self, first_filename, second_filename):
+        self.__load_files(first_filename, second_filename)
+        self.metric_results.clear()
+        for i in self.__metrics:
+            self.metric_results[i.__name__] = i(*self.__get_normalized_code())
+        return round(1 - sum(self.metric_results.values()) /
+                     len(self.metric_results), 2)
 
 
 if __name__ == "__main__":
+    comparator = AntiPlagiarism([damerau_levenshtein_distance])
     parser = argparse.ArgumentParser(
         description="Compares python files and produces similarity")
     parser.add_argument("input")
@@ -77,5 +90,5 @@ if __name__ == "__main__":
     args = parser.parse_args()
     with open(args.input, "r") as r, open(args.scores, "w") as w:
         for line in r.readlines():
-            w.write(str(files_comparator(*line.split())))
+            w.write(str(comparator.Compare(*line.split())))
             w.write("\n")
