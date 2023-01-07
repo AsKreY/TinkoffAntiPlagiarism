@@ -1,6 +1,7 @@
 #!/usr/bin/python
 import argparse
 import ast
+import multiprocessing as mp
 import numpy as np
 
 
@@ -32,6 +33,9 @@ def damerau_levenshtein_distance(s1, s2):
 
 
 class AntiPlagiarism:
+    manager = mp.Manager()
+    results = manager.dict()
+
     class LevensteinLower(ast.NodeTransformer):
         def visit_arg(self, node):
             return ast.arg(**{**node.__dict__, 'arg': 'a'})
@@ -77,8 +81,10 @@ class AntiPlagiarism:
         self.metric_results.clear()
         for i in self.__metrics:
             self.metric_results[i.__name__] = i(*self.__get_normalized_code())
-        return round(1 - sum(self.metric_results.values()) /
-                     len(self.metric_results), 2)
+        self.results[(first_filename, second_filename)] =\
+            (x := round(1 - sum(self.metric_results.values()) /
+                        len(self.metric_results), 2))
+        return x
 
 
 if __name__ == "__main__":
@@ -88,7 +94,23 @@ if __name__ == "__main__":
     parser.add_argument("input")
     parser.add_argument("scores")
     args = parser.parse_args()
+
+    processes = []
+    with open(args.input, "r") as r:
+        for line in r.readlines():
+            processes.append(
+                mp.Process(target=comparator.Compare, args=line.split()))
+
+    kNCPU = mp.cpu_count()
+    print(len(processes), kNCPU)
+    for i in range(0, len(processes), kNCPU):
+        print(i)
+        for j in range(i, min(i + kNCPU, len(processes))):
+            processes[j].start()
+        for j in range(i, min(i + kNCPU, len(processes))):
+            processes[j].join()
     with open(args.input, "r") as r, open(args.scores, "w") as w:
         for line in r.readlines():
-            w.write(str(comparator.Compare(*line.split())))
-            w.write("\n")
+            first_filename, second_filename = line.split()
+            w.write("{}\n".format(comparator.results[(first_filename,
+                                                      second_filename)]))
