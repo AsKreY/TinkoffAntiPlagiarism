@@ -33,9 +33,6 @@ def damerau_levenshtein_distance(s1, s2):
 
 
 class AntiPlagiarism:
-    manager = mp.Manager()
-    results = manager.dict()
-
     class LevensteinLower(ast.NodeTransformer):
         def visit_arg(self, node):
             return ast.arg(**{**node.__dict__, 'arg': 'a'})
@@ -81,36 +78,52 @@ class AntiPlagiarism:
         self.metric_results.clear()
         for i in self.__metrics:
             self.metric_results[i.__name__] = i(*self.__get_normalized_code())
-        self.results[(first_filename, second_filename)] =\
-            (x := round(1 - sum(self.metric_results.values()) /
-                        len(self.metric_results), 2))
-        return x
+        return round(1 - sum(self.metric_results.values()) /
+                     len(self.metric_results), 2)
+
+
+def end_func(response):
+    print(response)
+
+
+def worker(line):
+    comparator = AntiPlagiarism([damerau_levenshtein_distance])
+    return comparator.Compare(*line.split())
 
 
 if __name__ == "__main__":
-    comparator = AntiPlagiarism([damerau_levenshtein_distance])
-    parser = argparse.ArgumentParser(
-        description="Compares python files and produces similarity")
-    parser.add_argument("input")
-    parser.add_argument("scores")
-    args = parser.parse_args()
+    # parser = argparse.ArgumentParser(
+    #     description="Compares python files and produces similarity")
+    # parser.add_argument("input")
+    # parser.add_argument("scores")
+    # args = parser.parse_args()
 
-    processes = []
-    with open(args.input, "r") as r:
-        for line in r.readlines():
-            processes.append(
-                mp.Process(target=comparator.Compare, args=line.split()))
+    filename_pairs = []
 
-    kNCPU = mp.cpu_count()
-    print(len(processes), kNCPU)
-    for i in range(0, len(processes), kNCPU):
-        print(i)
-        for j in range(i, min(i + kNCPU, len(processes))):
-            processes[j].start()
-        for j in range(i, min(i + kNCPU, len(processes))):
-            processes[j].join()
-    with open(args.input, "r") as r, open(args.scores, "w") as w:
+    with open("input.txt", "r") as r:
         for line in r.readlines():
-            first_filename, second_filename = line.split()
-            w.write("{}\n".format(comparator.results[(first_filename,
-                                                      second_filename)]))
+            filename_pairs.append(line)
+
+    with mp.Pool(mp.cpu_count()) as p:
+        p.map_async(worker, filename_pairs, callback=end_func)
+        p.close()
+        p.join()
+    # processes = []
+    # with open(args.input, "r") as r:
+    #     for line in r.readlines():
+    #         processes.append(
+    #             mp.Process(target=comparator.Compare, args=line.split()))
+
+    # kNCPU = mp.cpu_count()
+    # print(len(processes), kNCPU)
+    # for i in range(0, len(processes), kNCPU):
+    #     print(i)
+    #     for j in range(i, min(i + kNCPU, len(processes))):
+    #         processes[j].start()
+    #     for j in range(i, min(i + kNCPU, len(processes))):
+    #         processes[j].join()
+    # with open(args.input, "r") as r, open(args.scores, "w") as w:
+    #     for line in r.readlines():
+    #         first_filename, second_filename = line.split()
+    #         w.write("{}\n".format(comparator.results[(first_filename,
+    #                                                   second_filename)]))
