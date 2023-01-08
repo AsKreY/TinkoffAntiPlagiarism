@@ -82,25 +82,30 @@ class AntiPlagiarism:
                      len(self.metric_results), 2)
 
 
+results = []  # TODO: Get rid of global variable
+
+
 def end_func(response):
-    print(response)
+    """Collecting results of all processes"""
+    results.extend(response)
 
 
 def worker(line):
+    """Compare two filenames from one line"""
     comparator = AntiPlagiarism([damerau_levenshtein_distance])
     return comparator.Compare(*line.split())
 
 
 if __name__ == "__main__":
-    # parser = argparse.ArgumentParser(
-    #     description="Compares python files and produces similarity")
-    # parser.add_argument("input")
-    # parser.add_argument("scores")
-    # args = parser.parse_args()
+    parser = argparse.ArgumentParser(
+        description="Compares python files and produces similarity")
+    parser.add_argument("input")
+    parser.add_argument("scores")
+    args = parser.parse_args()
 
     filename_pairs = []
 
-    with open("input.txt", "r") as r:
+    with open(args.input, "r") as r:
         for line in r.readlines():
             filename_pairs.append(line)
 
@@ -108,22 +113,6 @@ if __name__ == "__main__":
         p.map_async(worker, filename_pairs, callback=end_func)
         p.close()
         p.join()
-    # processes = []
-    # with open(args.input, "r") as r:
-    #     for line in r.readlines():
-    #         processes.append(
-    #             mp.Process(target=comparator.Compare, args=line.split()))
 
-    # kNCPU = mp.cpu_count()
-    # print(len(processes), kNCPU)
-    # for i in range(0, len(processes), kNCPU):
-    #     print(i)
-    #     for j in range(i, min(i + kNCPU, len(processes))):
-    #         processes[j].start()
-    #     for j in range(i, min(i + kNCPU, len(processes))):
-    #         processes[j].join()
-    # with open(args.input, "r") as r, open(args.scores, "w") as w:
-    #     for line in r.readlines():
-    #         first_filename, second_filename = line.split()
-    #         w.write("{}\n".format(comparator.results[(first_filename,
-    #                                                   second_filename)]))
+    with open(args.scores, "w") as w:
+        w.write('\n'.join(str(i) for i in results))
