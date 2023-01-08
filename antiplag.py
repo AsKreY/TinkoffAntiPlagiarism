@@ -1,6 +1,7 @@
 #!/usr/bin/python
 import argparse
 import ast
+import multiprocessing as mp
 import numpy as np
 
 
@@ -81,14 +82,37 @@ class AntiPlagiarism:
                      len(self.metric_results), 2)
 
 
-if __name__ == "__main__":
+results = []  # TODO: Get rid of global variable
+
+
+def end_func(response):
+    """Collecting results of all processes"""
+    results.extend(response)
+
+
+def worker(line):
+    """Compare two filenames from one line"""
     comparator = AntiPlagiarism([damerau_levenshtein_distance])
+    return comparator.Compare(*line.split())
+
+
+if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Compares python files and produces similarity")
     parser.add_argument("input")
     parser.add_argument("scores")
     args = parser.parse_args()
-    with open(args.input, "r") as r, open(args.scores, "w") as w:
+
+    filename_pairs = []
+
+    with open(args.input, "r") as r:
         for line in r.readlines():
-            w.write(str(comparator.Compare(*line.split())))
-            w.write("\n")
+            filename_pairs.append(line)
+
+    with mp.Pool(mp.cpu_count()) as p:
+        p.map_async(worker, filename_pairs, callback=end_func)
+        p.close()
+        p.join()
+
+    with open(args.scores, "w") as w:
+        w.write('\n'.join(str(i) for i in results))
